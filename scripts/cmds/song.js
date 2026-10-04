@@ -1,134 +1,210 @@
 const axios = require("axios");
-
-const API_CONFIG_URL = "https://raw.githubusercontent.com/goatbotnx/xalmanx210/refs/heads/main/apis.json";
-const API_KEY = "xalman-hub";
-let apiBaseUrl = null;
-let apiConfigRequest = null;
-
-async function getApiBaseUrl() {
-  if (apiBaseUrl) return apiBaseUrl;
-
-  if (!apiConfigRequest) {
-    apiConfigRequest = axios
-      .get(API_CONFIG_URL, { timeout: 15000 })
-      .then(({ data }) => {
-        const baseUrl = data?.[API_KEY];
-
-        if (typeof baseUrl !== "string" || !baseUrl.trim()) {
-          throw new Error(`Missing API key in apis.json: ${API_KEY}`);
-        }
-
-        apiBaseUrl = baseUrl.replace(/\/+$/, "");
-        return apiBaseUrl;
-      })
-      .finally(() => {
-        apiConfigRequest = null;
-      });
-  }
-
-  return apiConfigRequest;
-}
-const { PassThrough } = require("stream");
+const fs = require("fs-extra");
+const path = require("path");
 
 module.exports = {
   config: {
     name: "song",
-    version: "4.0",
-    author: "𝐒𝐈𝐀𝐌 𝐀𝐇𝐌𝐄𝐃 𝐒𝐀𝐀𝐍",
-    countDown: 2,
+    aliases: ["sing", "music", "yta", "audio"],
+    version: "5.2.0",
+    author: "👑 𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍 👑",
+    countDown: 5,
     role: 0,
-    shortDescription: {
-      en: "Search and play a song from SoundCloud"
-    },
-    longDescription: {
-      en: "Fetches a matching song and sends the audio"
-    },
-    category: "MEDIA",
-    guide: {
-      en: "{pn} <song name>"
+    description: "Search 10 songs with image preview and select to download",
+    category: "media",
+    guide: "{pn} [song name / link]",
+    priority: 1
+  },
+
+  onStart: async function ({ message, args, event }) {
+    if (!args[0]) {
+      return message.reply("🎵 **Jani! Kisi gaane ka naam tou do.**\n(e.g: /song wajah tum ho)");
+    }
+
+    const searchQuery = args.join(" ");
+    const cacheDir = path.join(__dirname, "cache");
+    await fs.ensureDir(cacheDir);
+
+    let searchMsg;
+    try {
+      searchMsg = await message.reply("🔍 Songs dhoondhe ja rahe hain, thoda intazar karein...");
+
+      // Multi-search endpoints fallback
+      const searchEndpoints = [
+        `https://api.nexray.eu.cc/search/yt?q=${encodeURIComponent(searchQuery)}`,
+        `https://api.nexray.eu.cc/search/youtube?q=${encodeURIComponent(searchQuery)}`,
+        `https://uzairrajputapis.qzz.io/api/ytsearch?query=${encodeURIComponent(searchQuery)}`,
+        `https://uzairrajputapis.qzz.io/api/yt?search=${encodeURIComponent(searchQuery)}`
+      ];
+
+      let items = null;
+
+      for (const url of searchEndpoints) {
+        try {
+          const res = await axios.get(url, { timeout: 12000 });
+          const raw = res.data?.result || res.data?.results || res.data?.data || res.data;
+          
+          if (Array.isArray(raw) && raw.length > 0) {
+            items = raw;
+            break;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+
+      // If Search List fails, directly fallback to Single Song Download
+      if (!items || items.length === 0) {
+        if (searchMsg?.messageID) message.unsend(searchMsg.messageID);
+        return downloadDirectSong(message, searchQuery, cacheDir);
+      }
+
+      // Top 10 Limit
+      const list = items.slice(0, 10);
+
+      // ── STYLISH NUMBER & MENU DESIGN ──
+      let listTxt = `╭─────────────🅢🅞🅝🅖─────────────╮\n`;
+      listTxt += `│  🎵 𝐒𝐄𝐀𝐑𝐂𝐇 𝐑𝐄𝐒𝐔𝐋𝐓𝐒 ( Top 10 )\n`;
+      listTxt += `├───────────────────────────────╯\n\n`;
+
+      list.forEach((item, index) => {
+        const num = index + 1 < 10 ? `0${index + 1}` : `${index + 1}`;
+        const title = item.title || "Unknown Title";
+        const duration = item.duration || item.timestamp || "N/A";
+        const channel = item.channel || item.author?.name || "YouTube";
+
+        listTxt += `╭─ [ ${num} ] ◈ ${title}\n`;
+        listTxt += `╰─► ⏱️ ${duration}  │  👤 ${channel}\n\n`;
+      });
+
+      listTxt += `──━━━━━ [ 𝐒𝐄𝐋𝐄𝐂𝐓 𝐒𝐎𝐍𝐆 ] ━━━━━──\n`;
+      listTxt += `👉 **1 se ${list.length} tak number likh kar reply karein.**\n\n`;
+      listTxt += `👑 **Powered by:** 👑 𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍 👑`;
+
+      if (searchMsg?.messageID) message.unsend(searchMsg.messageID);
+
+      // Top Result Thumbnail Preview
+      let firstThumb = list[0]?.thumbnail || list[0]?.image;
+      let attachment = null;
+      let thumbPath = path.join(cacheDir, `thumb_${Date.now()}.jpg`);
+
+      if (firstThumb && typeof firstThumb === "string") {
+        try {
+          const imgRes = await axios.get(firstThumb, { responseType: "arraybuffer", timeout: 8000 });
+          await fs.writeFile(thumbPath, Buffer.from(imgRes.data));
+          attachment = fs.createReadStream(thumbPath);
+        } catch (e) {}
+      }
+
+      const msgOptions = { body: listTxt };
+      if (attachment) msgOptions.attachment = attachment;
+
+      const sentMsg = await message.reply(msgOptions);
+
+      // Cleanup Thumb Cache
+      if (fs.existsSync(thumbPath)) {
+        setTimeout(() => { try { fs.unlinkSync(thumbPath); } catch (e) {} }, 10000);
+      }
+
+      // Register Reply State
+      global.GoatBot.onReply.set(sentMsg.messageID, {
+        commandName: this.config.name,
+        messageID: sentMsg.messageID,
+        author: event.senderID,
+        searchResults: list
+      });
+
+    } catch (err) {
+      console.error("Song Search Error:", err?.message);
+      if (searchMsg?.messageID) message.unsend(searchMsg.messageID);
+      // Automatic Fallback on General Error
+      return downloadDirectSong(message, searchQuery, cacheDir);
     }
   },
 
-  onStart: async function ({ api, event, args }) {
-    const { threadID, messageID } = event;
-    const query = args.join(" ").trim();
+  onReply: async function ({ message, event, Reply }) {
+    const { author, searchResults, messageID } = Reply;
+    if (event.senderID !== author) return;
 
-    if (!query) {
-      return api.sendMessage(
-        "❌ Please enter a song name.\nExample: /song Happy Nation",
-        threadID,
-        messageID
-      );
+    const choice = parseInt(event.body.trim());
+    if (isNaN(choice) || choice < 1 || choice > searchResults.length) {
+      return message.reply(`⚠️ Please 1 se ${searchResults.length} ke darmayan number reply karein.`);
     }
 
-    try {
-      api.setMessageReaction("🎵", messageID, () => {}, true);
+    const selectedSong = searchResults[choice - 1];
+    const selectedQuery = selectedSong.url || selectedSong.title;
 
-      const { data } = await axios.get(
-        `${await getApiBaseUrl()}/api/scdlv2?query=${encodeURIComponent(query)}`,
-        {
-          timeout: 20000,
-          headers: {
-            "User-Agent": "Mozilla/5.0"
-          }
-        }
-      );
+    message.unsend(messageID);
+    const cacheDir = path.join(__dirname, "cache");
 
-      if (!data?.status || !data?.result?.download_url) {
-        throw new Error(data?.message || "Song not found");
-      }
-
-      const title = data.result.title || query;
-      const downloadUrl = data.result.download_url;
-
-      const audio = await axios.get(downloadUrl, {
-        responseType: "stream",
-        timeout: 60000,
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-          "Accept": "audio/mpeg,audio/*,*/*;q=0.8",
-          "Referer": "https://soundcloud.com/"
-        }
-      });
-
-      const stream = new PassThrough({
-        highWaterMark: 1024 * 1024
-      });
-
-      audio.data.on("error", error => {
-        stream.destroy(error);
-      });
-
-      audio.data.pipe(stream);
-
-      stream.path = `${title.replace(/[\\/:*?"<>|]/g, "_")}.mp3`;
-
-      const result = await api.sendMessage(
-        {
-          body: `🎧 ${title}`,
-          attachment: stream
-        },
-        threadID,
-        messageID
-      );
-
-      api.setMessageReaction("✅", messageID, () => {}, true);
-
-      return result;
-
-    } catch (error) {
-      console.error("SONG ERROR:", error);
-
-      api.setMessageReaction("❌", messageID, () => {}, true);
-
-      return api.sendMessage(
-        `❌ Failed to fetch song\n\n${error.message || "Unknown error"}`,
-        threadID,
-        messageID
-      );
-    }
+    return downloadDirectSong(message, selectedQuery, cacheDir, selectedSong);
   }
 };
+
+// Helper Function for Audio Download & Processing
+async function downloadDirectSong(message, query, cacheDir, selectedMetaData = null) {
+  let waitingMsg;
+  const audioPath = path.join(cacheDir, `song_${Date.now()}.mp3`);
+
+  try {
+    waitingMsg = await message.reply("🎶 Please thoda intazar karein, song download ho raha hai...");
+
+    const apiUrl = `https://api.nexray.eu.cc/downloader/ytplay?q=${encodeURIComponent(query)}`;
+
+    const res = await axios.get(apiUrl, {
+      timeout: 25000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
+
+    const data = res.data;
+
+    let downloadUrl = data?.result?.download_url || data?.result?.url || data?.download_url;
+    let title = data?.result?.title || selectedMetaData?.title || query;
+    let duration = data?.result?.duration || selectedMetaData?.duration || "N/A";
+    let channel = data?.result?.channel || selectedMetaData?.channel || "N/A";
+    let views = data?.result?.views || "N/A";
+
+    if (!downloadUrl || typeof downloadUrl !== "string") {
+      if (waitingMsg?.messageID) message.unsend(waitingMsg.messageID);
+      return message.reply("❌ Download link nahi mil saka. Direct gaane ka naam sahi se likh kar try karein.");
+    }
+
+    // Download Binary Stream (.mp3)
+    const streamRes = await axios.get(downloadUrl, {
+      responseType: "arraybuffer",
+      timeout: 90000,
+      headers: { "User-Agent": "Mozilla/5.0" }
+    });
+
+    await fs.ensureDir(cacheDir);
+    await fs.writeFile(audioPath, Buffer.from(streamRes.data));
+
+    if (waitingMsg?.messageID) message.unsend(waitingMsg.messageID);
+
+    // Stylish Final Audio Caption
+    const caption = 
+      `╭─────────────🎵 𝐒𝐎𝐍𝐆 🎵─────────────╮\n` +
+      `│ 🎧 **Title:** ${title}\n` +
+      `│ ⏱️ **Duration:** ${duration}\n` +
+      `│ 📢 **Channel:** ${channel}\n` +
+      `│ 👁️ **Views:** ${views}\n` +
+      `├──────────────────────────────────────╯\n` +
+      `👑 **Powered by:** 👑 𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍 👑`;
+
+    await message.reply({
+      body: caption,
+      attachment: fs.createReadStream(audioPath)
+    });
+
+    if (fs.existsSync(audioPath)) {
+      setTimeout(() => {
+        try { fs.unlinkSync(audioPath); } catch (e) {}
+      }, 10000);
+    }
+
+  } catch (err) {
+    console.error("Song Direct Download Error:", err?.message);
+    if (waitingMsg?.messageID) message.unsend(waitingMsg.messageID);
+    return message.reply("❌ Audio process karte waqt error aaya. Thodi der baad try karein.");
+  }
+}
