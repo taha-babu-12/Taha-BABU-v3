@@ -3,10 +3,10 @@ const axios = require("axios");
 module.exports = {
 	config: {
 		name: "anihot",
-		version: "0.0.7",
-		author: "Siam Ahmed Saan",
+		version: "0.0.9",
+		author: "TAHA KHAN",
 		countDown: 5,
-		role: 0,
+		role: 2, // 👈 2 means Only Bot Admin / Owner can use this command
 		description: {
 			en: "𝐆𝐞𝐭 𝐑𝐚𝐧𝐝𝐨𝐦 𝐀𝐧𝐢𝐦𝐞 𝐇𝐨𝐭 𝐈𝐦𝐚𝐠𝐞"
 		},
@@ -18,7 +18,6 @@ module.exports = {
 
 	onStart: async function ({ message }) {
 		try {
-
 			const api = "https://azadx69x-all-apis-top.vercel.app/api/anihot";
 
 			const res = await axios.get(api, {
@@ -32,7 +31,7 @@ module.exports = {
 
 		} catch (err) {  
 			console.log(err);  
-			return message.reply("❌ 𝐂𝐡𝐮𝐝𝐥𝐢𝐧𝐠 𝐏𝐨𝐧𝐠");  
+			return message.reply("❌ Error: API down hai ya image fetch nahi ho saki!");  
 		}  
 	}
 };
