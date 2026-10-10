@@ -1,56 +1,40 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 module.exports = {
-	config: {
-		name: "file",
-		version: "3.0",
-		author: "𝐒𝐈𝐀𝐌 𝐀𝐇𝐌𝐄𝐃 𝐒𝐀𝐀𝐍",
-		countDown: 2,
-		role: 0,
-		shortDescription: "Send bot script",
-		longDescription: "Send bot specified file",
-		category: "owner",
-		guide: "{pn} <file name>"
-	},
+  config: {
+    name: "filecmd",
+    aliases: ["file"],
+    version: "1.0",
+    author: "TAHA KHAN",
+    countDown: 5,
+    role: 2,
+    shortDescription: "View code of a command",
+    longDescription: "View the raw source code of any command in the commands folder",
+    category: "owner",
+    guide: "{pn} <commandName>"
+  },
 
-	onStart: async function ({ message, args, api, event }) {
+  onStart: async function ({ args, message }) {
+    const cmdName = args[0];
+    if (!cmdName) return message.reply("❌ | Please provide the command name.\nExample: filecmd fluxsnell");
 
-		const permission = ["100075454605535"];
-		if (!permission.includes(event.senderID)) {
-			return api.sendMessage("Access denied.", event.threadID, event.messageID);
-		}
+    const cmdPath = path.join(__dirname, `${cmdName}.js`);
+    if (!fs.existsSync(cmdPath)) return message.reply(`❌ | Command "${cmdName}" not found in this folder.`);
 
-		const fileName = args[0];
-		if (!fileName) {
-			return api.sendMessage("Please provide a file name.", event.threadID, event.messageID);
-		}
+    try {
+      const code = fs.readFileSync(cmdPath, "utf8");
 
-		const files = fs.readdirSync(__dirname).filter(f => f.endsWith(".js"));
-		const filePath = path.join(__dirname, `${fileName}.js`);
+      if (code.length > 19000) {
+        return message.reply("⚠️ | This file is too large to display.");
+      }
 
-		if (!fs.existsSync(filePath)) {
-
-			const suggestions = files.filter(f =>
-				f.toLowerCase().includes(fileName.toLowerCase())
-			);
-
-			if (suggestions.length > 0) {
-				return api.sendMessage(
-					`File not found: ${fileName}.js\n\nDid you mean:\n- ${suggestions.join("\n- ")}`,
-					event.threadID,
-					event.messageID
-				);
-			}
-
-			return api.sendMessage(
-				`File not found: ${fileName}.js\n\nAvailable files:\n- ${files.join("\n- ")}`,
-				event.threadID,
-				event.messageID
-			);
-		}
-
-		const fileContent = fs.readFileSync(filePath, 'utf8');
-		return api.sendMessage({ body: fileContent }, event.threadID);
-	}
+      return message.reply({
+        body: `📄 | Source code of "${cmdName}.js":\n\n${code}`
+      });
+    } catch (err) {
+      console.error(err);
+      return message.reply("❌ | Error reading the file.");
+    }
+  }
 };
