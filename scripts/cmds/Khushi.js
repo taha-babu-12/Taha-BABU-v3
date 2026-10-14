@@ -1,4 +1,4 @@
-const axios = require("axios");
+Cmd install gemini.js const axios = require("axios");
 const yts = require("yt-search");
 const fs = require("fs-extra");
 const path = require("path");
@@ -7,15 +7,15 @@ const { Transform } = require("stream");
 
 module.exports = {
   config: {
-    name: "khushi",
-    aliases: ["dewani", "bby"],
-    version: "28.0.1",
+    name: "Khushi",
+    aliases: ["taha", "dewani"],
+    version: "31.0.0",
     author: "TAHA KHAN",
     countDown: 2,
     role: 0,
     description: {
-      en: "Dewani — AI on Message Reply & YT Downloader",
-      ur: "Message Reply par AI chat aur YouTube Downloader"
+      en: "Gemini — Full Working AI Bot + YT Downloader",
+      ur: "Gemini — Mukammal AI Bot aur YouTube Downloader"
     },
     category: "ai",
     guide: {
@@ -24,16 +24,23 @@ module.exports = {
     }
   },
 
+  // ===== MEMORY (Thread ke andar user-wise) =====
   chatMemory: {},
 
-  AUDIO_API: "https://uzairrajputapis.qzz.io/api/downloader/ytmp3",
+  // ===== WORKING API =====
+  AI_BASE_URL: "https://taha-ai-api.onrender.com",
+  AI_MODEL: "gemini-3.5-flash",
+
+  // ===== DOWNLOADER APIs =====
+  AUDIO_API: "https://azadx69x.is-a.dev/api/sing?",
   VIDEO_API: "https://uzairrajputapis.qzz.io/api/downloader/youtube",
-  YT_SEARCH: "https://uzairrajputapis.qzz.io/api/search/youtube",
-  AI_API: "https://uzairrajputapis.qzz.io/api/ai/gemini",
+  YT_SEARCH: "https://azadx69x.is-a.dev/api/youtube-search",
+
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   OWNER_TAG: "»»𝐎𝐖𝐍𝐄𝐑««★™  »»𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍««",
-  TRIGGER_WORDS: ["khushi", "dewani", "tahakigf", "bot", "baby"],
+  TRIGGER_WORDS: ["taha", "Dewani", "bot", "baby", "tahakigf"],
 
+  // ===== SEND MESSAGE HELPER =====
   sendMsg(api, content, threadID, messageID) {
     return new Promise((resolve) => {
       api.sendMessage(content, threadID, (err, info) => {
@@ -61,6 +68,100 @@ module.exports = {
     if (p && fs.existsSync(p)) {
       try { await fs.unlink(p); } catch {}
     }
+  },
+
+  // ===== USER KA NAAM NIKALNE KA FUNCTION =====
+  async getUserName(api, event, usersData) {
+    try {
+      // GoatBot ka usersData (sabse best)
+      if (usersData && usersData.getName) {
+        const name = await usersData.getName(event.senderID);
+        if (name) return name;
+      }
+    } catch (e) {}
+
+    try {
+      // Facebook API se seedha naam fetch
+      if (api && api.getUserInfo) {
+        const info = await new Promise((resolve) => {
+          api.getUserInfo(event.senderID, (err, data) => {
+            if (err) return resolve(null);
+            resolve(data);
+          });
+        });
+        if (info && info[event.senderID]?.name) {
+          return info[event.senderID].name;
+        }
+      }
+    } catch (e) {}
+
+    // Fallback: senderID ka first 6 digit
+    return "User_" + String(event.senderID).slice(-6);
+  },
+
+  // ===== RESPONSE EXTRACTOR =====
+  extractReply(data) {
+    if (!data) return null;
+    if (typeof data === "string" && data.length > 5) return data;
+    if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
+    if (data.choices?.[0]?.text) return data.choices[0].text;
+    if (data.response) return data.response;
+    if (data.text) return data.text;
+    if (data.message) return data.message;
+    if (data.result) return data.result;
+    if (data.answer) return data.answer;
+    if (data.data) return typeof data.data === "string" ? data.data : JSON.stringify(data.data, null, 2);
+    return JSON.stringify(data, null, 2);
+  },
+
+  // ===== WORKING AI CALL =====
+  async askAI(prompt) {
+    const endpoints = [
+      "/v1/chat/completions",
+      "/api/chat",
+      "/chat",
+      "/generate",
+      "/api/generate",
+      "/api/v1/chat/completions",
+      "/api/v1/chat",
+      "/v1/chat",
+      "/ask",
+      "/api/ask",
+      "/api/completions",
+      "/gemini",
+      "/api/gemini"
+    ];
+
+    for (const endpoint of endpoints) {
+      const url = this.AI_BASE_URL + endpoint;
+
+      try {
+        const res = await axios.post(url, {
+          model: this.AI_MODEL,
+          messages: [{ role: "user", content: prompt }]
+        }, {
+          timeout: 45000,
+          headers: { "Content-Type": "application/json" }
+        });
+        const txt = this.extractReply(res.data);
+        if (txt) return txt;
+      } catch (e1) {
+        if (e1.response && (e1.response.status === 400 || e1.response.status === 422)) {
+          try {
+            const res2 = await axios.post(url, {
+              model: this.AI_MODEL,
+              prompt: prompt
+            }, {
+              timeout: 45000,
+              headers: { "Content-Type": "application/json" }
+            });
+            const txt2 = this.extractReply(res2.data);
+            if (txt2) return txt2;
+          } catch (e2) {}
+        }
+      }
+    }
+    return null;
   },
 
   async getYTInfo(query) {
@@ -108,7 +209,7 @@ module.exports = {
         return this.sendMsg(api, "Maafi jaanu, iska download link nahi mil raha 🥺", threadID, messageID);
       }
 
-      filePath = path.join(cacheDir, `khushi_${senderID}_${Date.now()}.mp3`);
+      filePath = path.join(cacheDir, `gemini_${senderID}_${Date.now()}.mp3`);
       const res = await axios({ url: downloadUrl, method: "GET", responseType: "stream", timeout: 60000 });
 
       await pipeline(
@@ -156,7 +257,7 @@ module.exports = {
         return this.sendMsg(api, "Maafi jaanu, iska download link nahi mil raha 🥺", threadID, messageID);
       }
 
-      filePath = path.join(cacheDir, `khushi_${senderID}_${Date.now()}.mp4`);
+      filePath = path.join(cacheDir, `gemini_${senderID}_${Date.now()}.mp4`);
       const res = await axios({ url: downloadUrl, method: "GET", responseType: "stream", timeout: 60000 });
 
       await pipeline(
@@ -180,53 +281,75 @@ module.exports = {
     }
   },
 
-  // ===== AI CHAT LOGIC =====
-  async handleAI(api, event, userMsg) {
-    const { threadID, messageID } = event;
+  // ===== AI CHAT LOGIC (With User Name + History) =====
+  async handleAI(api, event, userMsg, usersData) {
+    const { threadID, messageID, senderID } = event;
 
     if (api.setMessageReaction) {
       api.setMessageReaction("❤️", messageID, () => {}, true);
     }
 
-    this.chatMemory[threadID] = this.chatMemory[threadID] || [];
-    this.chatMemory[threadID].push(`User: ${userMsg}`);
-    if (this.chatMemory[threadID].length > 5) this.chatMemory[threadID].shift();
+    // User ka naam nikalo
+    const userName = await this.getUserName(api, event, usersData);
 
-    const prompt = `You are Dewani / Khushi.
+    // User ki apni memory (thread + senderID ke hisaab se)
+    this.chatMemory[threadID] = this.chatMemory[threadID] || {};
+    this.chatMemory[threadID][senderID] = this.chatMemory[threadID][senderID] || [];
+
+    const userHistory = this.chatMemory[threadID][senderID];
+    userHistory.push(`${userName}: ${userMsg}`);
+    if (userHistory.length > 6) userHistory.shift(); // Last 6 messages rakho
+
+    const historyText = userHistory.join("\n");
+
+    const prompt = `You are Taha ai.
 
 SYSTEM INSTRUCTIONS:
 • Fixed information ke answers kabhi change ya guess mat karna.
 • User Roman urdu, English ya Hinglish mein pooche to meaning samajhkar same fixed answer dena.
 
+USER INFO:
+• User ka naam: ${userName}
+• User ka naam use karke baat karo (jaise "${userName} kaisa hai?",
+• Kabhi kabhi naam se bulao taake personal lage.
+
 Golden Rules:
 1 :ap roman Urdu me bat kro gya hindi me nhi or ko jasa language me bat krha us me reply krna.
 2 :ap girlfriend jasi ho pyari or buth acha sa bat kro gyi.
 3 :koi pocha owner kon ha ya kis banya to bolna TAHA KHAN NA BANYA.
+6 :apna sub sa acha sa bat krni ha.
+7 :ap kbi gusaa me bat nhi kro gyu humsha pyar sa bat kro gyi bikull human jasi.
 4 :ap har language bat kro jo banda jas language bat jasa Bangli ya English ap k sath English bol rha to ap English me bat kro gyi Bangli me to bangli bat kro gyi.
-5 :agr koi pocha kis k ho apna bolna ha Ayesha ki ho bas.
+5 :User ka naam ${userName} hai — usay naam se bula kar baat karo kabhi kabhi.
 • User jis language mein bole, usi language aur vibe mein reply dena 🙂.
-• Reply playful, caring aur friendly hona chahiye 😌❤️.
+• Reply playful, caring aur friendly aur flirt hona chahiye 😌❤️.
 • Reply maximum 1–2 short lines ka ho.
 • Maximum 25–30 words mein jawab do.
 • Emojis zarur use karo 😘❤️😌.
 
-Context:
-${this.chatMemory[threadID].join("\n")}
-Dewani:`;
+Chat History (pichli baatein):
+${historyText}
+
+Gemini:`;
 
     try {
-      const res = await axios.post(this.AI_API, { prompt }, { timeout: 20000 });
-      let reply = res.data?.result?.answer || res.data?.answer || "Jaanu kuch bolo na... 🥺";
+      const reply = await this.askAI(prompt);
 
-      if (reply.length > 120) {
-        reply = reply.split('.')[0] + " 🫣";
+      if (!reply) {
+        throw new Error("Koi endpoint kaam nahi kiya");
       }
 
-      this.chatMemory[threadID].push(`Dewani: ${reply}`);
+      let finalReply = reply;
+      if (finalReply.length > 130) {
+        finalReply = finalReply.split('.')[0] + " 🫣";
+      }
 
-      return this.sendMsg(api, reply, threadID, messageID);
+      // AI ka reply bhi memory mein save karo
+      userHistory.push(`Gemini: ${finalReply}`);
+
+      return this.sendMsg(api, finalReply, threadID, messageID);
     } catch (e) {
-      console.error("[khushi AI Error]", e.message);
+      console.error("[gemini AI Error]", e.message);
       return this.sendMsg(api, "Net issue hai baby, main thak gayi hoon 🥺", threadID, messageID);
     }
   },
@@ -240,12 +363,11 @@ Dewani:`;
     });
     cleanedMsg = cleanedMsg.trim();
 
-    // Media Downloader Check
     const isVideoReq = /\b(video|vdo|mp4)\b/i.test(cleanedMsg);
     const isAudioReq = /\b(song|music|audio|mp3|play|gana|gaana)\b/i.test(cleanedMsg);
 
     if ((isVideoReq || isAudioReq || this.isYouTubeUrl(cleanedMsg)) && cleanedMsg.length > 3) {
-      let query = cleanedMsg.replace(/\b(video|vdo|mp4|song|music|audio|mp3|play|gana|gaana|khushi|dewani|khush|bot|babu|baby|bby|jan|simi)\b/gi, "").trim();
+      let query = cleanedMsg.replace(/\b(video|vdo|mp4|song|music|audio|mp3|play|gana|gaana|gemini|gem|bot|babu|baby|bby|jan|simi)\b/gi, "").trim();
       if (this.isYouTubeUrl(cleanedMsg)) query = cleanedMsg;
 
       if (query) {
@@ -257,10 +379,10 @@ Dewani:`;
       }
     }
 
-    return this.handleAI(api, event, cleanedMsg || text);
+    return this.handleAI(api, event, cleanedMsg || text, usersData);
   },
 
-  // ===== GOATBOT COMMAND HANDLERS =====
+  // ===== GOATBOT HANDLERS =====
   async onStart({ api, event, args, usersData }) {
     const botID = api.getCurrentUserID ? api.getCurrentUserID() : global.GoatBot?.botID;
     if (String(event.senderID) === String(botID)) return;
@@ -277,11 +399,10 @@ Dewani:`;
     const prefix = global.GoatBot?.config?.prefix || ".";
     if (body.startsWith(prefix)) return;
 
-    // Direct check: Agar sirf "bot" bol raha hai, toh khushi.js ignore karegi taake bot.js reply kar sake
     const cleanOnlyWord = body.toLowerCase().replace(/[^a-zA-Z]/g, "");
     if (cleanOnlyWord === "bot") return;
 
-    const isReplyToBot = event.type === "message_reply" && 
+    const isReplyToBot = event.type === "message_reply" &&
       (String(event.messageReply?.senderID) === String(botID) || String(event.messageReply?.author) === String(botID));
 
     const containsTrigger = this.TRIGGER_WORDS.some(word => body.toLowerCase().includes(word.toLowerCase()));
